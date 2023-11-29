@@ -1,86 +1,59 @@
-package com.work.GzipPerformanceAndAnalysis;
-
-import java.io.*;
+package com.work.GzipPerformanceAndAnalysis;import java.io.*;
+import java.util.concurrent.ExecutorService;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 import java.util.zip.GZIPInputStream;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-public class RealTimeGzipDosyaIsleme extends Thread {
-    @Override
-    public void run() {
-        String kaynakDizin = "C:\\Users\\melih.aycicek\\Documents\\Projects\\Company\\kaynak";   // Gzipten çıkartılacak dosyaların dizini
-        String hedefDizin = "C:\\Users\\melih.aycicek\\Documents\\Projects\\Company\\hedef";    // İşlendikten sonra taşınacak dizin
+public class RealTimeGzipDosyaIsleme {
+    public static void main(String[] args) {
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
-        Logger logger = Logger.getLogger("DosyaIsleme");
-        FileHandler fileHandler;
+        scheduler.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                String kaynakDizin = "C:\\Users\\melih.aycicek\\Documents\\Projects\\Company\\kaynak";
+                String hedefDizin = "C:\\Users\\melih.aycicek\\Documents\\Projects\\Company\\hedef";
 
-        try {
-            // Log dosyasını oluştur
-            fileHandler = new FileHandler("dosya_isleme.log");
-            logger.addHandler(fileHandler);
-            SimpleFormatter formatter = new SimpleFormatter();
-            fileHandler.setFormatter(formatter);
+                Logger logger = Logger.getLogger("DosyaIsleme");
+                FileHandler fileHandler;
 
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+                try {
+                    fileHandler = new FileHandler("dosya_isleme.log");
+                    logger.addHandler(fileHandler);
+                    SimpleFormatter formatter = new SimpleFormatter();
+                    fileHandler.setFormatter(formatter);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
 
-        while (true) {
-            File kaynakDizinFile = new File(kaynakDizin);
-            File hedefDizinFile = new File(hedefDizin);
+                ExecutorService mmExecutor = Executors.newFixedThreadPool(5); // Maksimum 5 MMIsParcacigi iş parçacığı
+                ExecutorService digerExecutor = Executors.newCachedThreadPool(); // DigerIsParcacigi iş parçacığı için
 
-            if (kaynakDizinFile.exists() && kaynakDizinFile.isDirectory()) {
-                File[] dosyalar = kaynakDizinFile.listFiles();
+                File kaynakDizinFile = new File(kaynakDizin);
+                File hedefDizinFile = new File(hedefDizin);
 
-                for (File dosya : dosyalar) {
-                    if (dosya.isFile() && dosya.getName().endsWith(".gz")) {
-                        try {
-                            long baslangicZamani = System.currentTimeMillis();
+                if (kaynakDizinFile.exists() && kaynakDizinFile.isDirectory()) {
+                    File[] dosyalar = kaynakDizinFile.listFiles();
+
+                    for (File dosya : dosyalar) {
+                        if (dosya.isFile() && dosya.getName().endsWith(".gz")) {
                             String dosyaAdi = dosya.getName();
-                            FileInputStream fis = new FileInputStream(dosya);
-                            GZIPInputStream gis = new GZIPInputStream(fis);
 
-                            // Dosyanın sonundaki .gz uzantısını kaldır ve .txt ekleyerek yeni adı oluştur
-                            String yeniDosyaAdi = dosyaAdi.substring(0, dosyaAdi.length() - 3) + ".txt";
-                            FileOutputStream fos = new FileOutputStream(hedefDizin + File.separator + yeniDosyaAdi);
-
-                            byte[] buffer = new byte[1024];
-                            int len;
-                            while ((len = gis.read(buffer)) > 0) {
-                                fos.write(buffer, 0, len);
+                            if (dosyaAdi.contains("MM")) {
+                                mmExecutor.execute(new MMIsParcacigi(dosya, hedefDizin, logger));
+                            } else {
+                                digerExecutor.execute(new DigerIsParcacigi(dosya, hedefDizin, logger));
                             }
-
-                            gis.close();
-                            fis.close();
-                            fos.close();
-
-                            long bitisZamani = System.currentTimeMillis();
-                            long islemSuresi = bitisZamani - baslangicZamani;
-
-                            logger.log(Level.INFO, "Dosya çıkartma ve işleme başarılı: " + dosyaAdi);
-                            logger.log(Level.INFO, "İşlem Süresi: " + islemSuresi + " ms");
-
-                            dosya.delete(); // Kaynak dizinden dosyayı sil
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            logger.log(Level.WARNING, "Dosya işleme sırasında hata oluştu: " + e.getMessage());
                         }
                     }
                 }
             }
-
-            try {
-                Thread.sleep(3000); // 3 saniye bekle
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
+        }, 0, 3, TimeUnit.SECONDS);
     }
-
-    public static void main(String[] args) {
-        RealTimeGzipDosyaIsleme gzipIsleme = new RealTimeGzipDosyaIsleme();
-        gzipIsleme.start(); // İş parçacığını başlat
-    }
+    
 }
